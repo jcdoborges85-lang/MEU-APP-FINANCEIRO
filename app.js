@@ -20,13 +20,165 @@ const addCategoryForm = document.getElementById('add-category-form');
 const newCategoryInput = document.getElementById('new-category-input');
 const categoriesListEl = document.getElementById('categories-list');
 
+// Temporal Filter DOM Elements
+const viewDiarioBtn = document.getElementById('view-diario');
+const viewSemanalBtn = document.getElementById('view-semanal');
+const viewMensalBtn = document.getElementById('view-mensal');
+const viewAnualBtn = document.getElementById('view-anual');
+const prevPeriodBtn = document.getElementById('prev-period-btn');
+const nextPeriodBtn = document.getElementById('next-period-btn');
+const todayBtn = document.getElementById('today-btn');
+const periodLabel = document.getElementById('period-label');
+const expenseComparisonEl = document.getElementById('expense-comparison');
+
+const filterTabs = {
+    'diario': viewDiarioBtn,
+    'semanal': viewSemanalBtn,
+    'mensal': viewMensalBtn,
+    'anual': viewAnualBtn
+};
+
 // Data state
 let transactions = [];
 const defaultCategories = ['Alimentação', 'Moradia', 'Transporte', 'Lazer', 'Outros'];
 let categories = [];
 
+// Temporal Filter State
+let currentView = 'mensal'; // 'diario', 'semanal', 'mensal', 'anual'
+let currentDate = new Date(); // Local date
+
+// Date helper to prevent timezone issues
+function parseDateLocal(dateString) {
+    const [year, month, day] = dateString.split('-');
+    return new Date(year, month - 1, day);
+}
+
+// Get the start and end of the period for the given date and view
+function getPeriodBounds(date, view) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+
+    let start, end;
+
+    if (view === 'diario') {
+        start = new Date(d);
+        end = new Date(d);
+        end.setHours(23, 59, 59, 999);
+    } else if (view === 'semanal') {
+        // Assume week starts on Monday
+        const day = d.getDay() || 7;
+        start = new Date(d);
+        start.setDate(d.getDate() - day + 1);
+
+        end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        end.setHours(23, 59, 59, 999);
+    } else if (view === 'mensal') {
+        start = new Date(d.getFullYear(), d.getMonth(), 1);
+        end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        end.setHours(23, 59, 59, 999);
+    } else if (view === 'anual') {
+        start = new Date(d.getFullYear(), 0, 1);
+        end = new Date(d.getFullYear(), 11, 31);
+        end.setHours(23, 59, 59, 999);
+    }
+
+    return { start, end };
+}
+
+// Get the equivalent date for the previous period
+function getPreviousPeriodDate(date, view) {
+    const d = new Date(date);
+    if (view === 'diario') {
+        d.setDate(d.getDate() - 1);
+    } else if (view === 'semanal') {
+        d.setDate(d.getDate() - 7);
+    } else if (view === 'mensal') {
+        d.setDate(1); // prevent month skipping edge case
+        d.setMonth(d.getMonth() - 1);
+    } else if (view === 'anual') {
+        d.setDate(1);
+        d.setFullYear(d.getFullYear() - 1);
+    }
+    return d;
+}
+
+// Format the period label for display
+function formatPeriodLabel(date, view) {
+    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+    if (view === 'diario') {
+        return `${String(date.getDate()).padStart(2, '0')} de ${months[date.getMonth()]}, ${date.getFullYear()}`;
+    } else if (view === 'semanal') {
+        const { start, end } = getPeriodBounds(date, view);
+        // Calculate week number roughly
+        const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+        const pastDaysOfYear = (start - firstDayOfYear) / 86400000;
+        const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+
+        const formatShortDate = (d) => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return `Semana ${weekNum} (${formatShortDate(start)} - ${formatShortDate(end)}/${end.getFullYear()})`;
+    } else if (view === 'mensal') {
+        return `${months[date.getMonth()]} / ${date.getFullYear()}`;
+    } else if (view === 'anual') {
+        return `${date.getFullYear()}`;
+    }
+}
+
+// Temporal Filter Event Listeners
+function setupTemporalFilterListeners() {
+    // Tab Clicks
+    Object.keys(filterTabs).forEach(view => {
+        filterTabs[view].addEventListener('click', () => {
+            currentView = view;
+
+            // Update Tab UI
+            Object.keys(filterTabs).forEach(v => {
+                const btn = filterTabs[v];
+                if (v === currentView) {
+                    btn.className = 'filter-tab bg-white shadow px-4 py-2 rounded-md text-sm font-medium text-blue-600 focus:outline-none';
+                } else {
+                    btn.className = 'filter-tab px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-gray-800 focus:outline-none';
+                }
+            });
+
+            updateUI();
+        });
+    });
+
+    // Navigator Clicks
+    prevPeriodBtn.addEventListener('click', () => {
+        currentDate = getPreviousPeriodDate(currentDate, currentView);
+        updateUI();
+    });
+
+    nextPeriodBtn.addEventListener('click', () => {
+        // Inverse of getPreviousPeriodDate
+        const d = new Date(currentDate);
+        if (currentView === 'diario') {
+            d.setDate(d.getDate() + 1);
+        } else if (currentView === 'semanal') {
+            d.setDate(d.getDate() + 7);
+        } else if (currentView === 'mensal') {
+            d.setDate(1); // prevent month skipping edge case
+            d.setMonth(d.getMonth() + 1);
+        } else if (currentView === 'anual') {
+            d.setDate(1);
+            d.setFullYear(d.getFullYear() + 1);
+        }
+        currentDate = d;
+        updateUI();
+    });
+
+    todayBtn.addEventListener('click', () => {
+        currentDate = new Date();
+        updateUI();
+    });
+}
+
 // Initialize App
 function init() {
+    setupTemporalFilterListeners();
     loadTransactions();
     loadCategories();
     updateUI();
@@ -250,12 +402,75 @@ function formatDate(dateString) {
     return dateString;
 }
 
+function calculateExpensesForPeriod(periodStart, periodEnd) {
+    return transactions.reduce((acc, t) => {
+        if (t.type === 'expense') {
+            const tDate = parseDateLocal(t.date);
+            if (tDate >= periodStart && tDate <= periodEnd) {
+                return acc + t.amount;
+            }
+        }
+        return acc;
+    }, 0);
+}
+
+function updateComparison(currentExpense) {
+    // Check if there are any transactions prior to the current period
+    const { start: currentStart } = getPeriodBounds(currentDate, currentView);
+
+    const hasHistory = transactions.some(t => {
+        const tDate = parseDateLocal(t.date);
+        return tDate < currentStart;
+    });
+
+    if (!hasHistory) {
+        expenseComparisonEl.textContent = "Sem histórico anterior para comparação";
+        expenseComparisonEl.className = "text-xs text-gray-500 mt-auto";
+        return;
+    }
+
+    const prevDate = getPreviousPeriodDate(currentDate, currentView);
+    const { start: prevStart, end: prevEnd } = getPeriodBounds(prevDate, currentView);
+
+    const prevExpense = calculateExpensesForPeriod(prevStart, prevEnd);
+
+    if (prevExpense === 0) {
+        if (currentExpense > 0) {
+            expenseComparisonEl.textContent = `+100% em relação ao período anterior`;
+            expenseComparisonEl.className = "text-xs text-red-500 mt-auto font-medium";
+        } else {
+            expenseComparisonEl.textContent = `Sem gastos no período anterior`;
+            expenseComparisonEl.className = "text-xs text-gray-500 mt-auto";
+        }
+    } else {
+        const diff = currentExpense - prevExpense;
+        const percentage = Math.round((diff / prevExpense) * 100);
+
+        let viewLabel = 'período';
+        if (currentView === 'diario') viewLabel = 'dia';
+        else if (currentView === 'semanal') viewLabel = 'semana';
+        else if (currentView === 'mensal') viewLabel = 'mês';
+        else if (currentView === 'anual') viewLabel = 'ano';
+
+        if (percentage > 0) {
+            expenseComparisonEl.textContent = `+${percentage}% em relação ao ${viewLabel} anterior`;
+            expenseComparisonEl.className = "text-xs text-red-500 mt-auto font-medium";
+        } else if (percentage < 0) {
+            expenseComparisonEl.textContent = `${percentage}% gastos a menos que o ${viewLabel} anterior`;
+            expenseComparisonEl.className = "text-xs text-green-500 mt-auto font-medium";
+        } else {
+            expenseComparisonEl.textContent = `Mesmo nível de gastos do ${viewLabel} anterior`;
+            expenseComparisonEl.className = "text-xs text-gray-500 mt-auto";
+        }
+    }
+}
+
 // Dashboard Updates
-function updateDashboard() {
+function updateDashboard(filteredTransactions) {
     let income = 0;
     let expense = 0;
 
-    transactions.forEach(t => {
+    filteredTransactions.forEach(t => {
         if (t.type === 'income') {
             income += t.amount;
         } else {
@@ -268,13 +483,15 @@ function updateDashboard() {
     totalIncomesEl.textContent = formatCurrency(income);
     totalExpensesEl.textContent = formatCurrency(expense);
     totalBalanceEl.textContent = formatCurrency(total);
+
+    updateComparison(expense);
 }
 
 // Render Transactions
-function renderTransactions() {
+function renderTransactions(filteredTransactions) {
     transactionList.innerHTML = '';
 
-    if (transactions.length === 0) {
+    if (filteredTransactions.length === 0) {
         transactionList.parentElement.classList.add('hidden');
         emptyState.classList.remove('hidden');
         return;
@@ -283,7 +500,7 @@ function renderTransactions() {
     transactionList.parentElement.classList.remove('hidden');
     emptyState.classList.add('hidden');
 
-    transactions.forEach(t => {
+    filteredTransactions.forEach(t => {
         const tr = document.createElement('tr');
 
         const amountColor = t.type === 'income' ? 'text-green-600' : 'text-red-600';
@@ -365,8 +582,18 @@ function updateCategorySelect() {
 // Master UI Update
 function updateUI() {
     updateCategorySelect();
-    updateDashboard();
-    renderTransactions();
+
+    periodLabel.textContent = formatPeriodLabel(currentDate, currentView);
+
+    const { start, end } = getPeriodBounds(currentDate, currentView);
+
+    const filteredTransactions = transactions.filter(t => {
+        const tDate = parseDateLocal(t.date);
+        return tDate >= start && tDate <= end;
+    });
+
+    updateDashboard(filteredTransactions);
+    renderTransactions(filteredTransactions);
 }
 
 // Start app

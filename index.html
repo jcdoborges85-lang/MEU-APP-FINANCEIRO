@@ -22,6 +22,33 @@
     <!-- Main Content -->
     <main class="container mx-auto px-4 py-8 flex-grow">
 
+        <!-- Barra de Controle Temporal -->
+        <div class="bg-white rounded-lg shadow-md p-4 mb-8 flex flex-col md:flex-row items-center justify-between gap-4">
+            <!-- Tabs -->
+            <div class="flex bg-gray-100 rounded-lg p-1 space-x-1">
+                <button id="view-diario" class="filter-tab px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-gray-800 focus:outline-none">Diário</button>
+                <button id="view-semanal" class="filter-tab px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-gray-800 focus:outline-none">Semanal</button>
+                <button id="view-mensal" class="filter-tab bg-white shadow px-4 py-2 rounded-md text-sm font-medium text-blue-600 focus:outline-none">Mensal</button>
+                <button id="view-anual" class="filter-tab px-4 py-2 rounded-md text-sm font-medium text-gray-600 hover:text-gray-800 focus:outline-none">Anual</button>
+            </div>
+
+            <!-- Navigator -->
+            <div class="flex items-center space-x-4">
+                <button id="prev-period-btn" class="p-2 text-gray-500 hover:text-blue-600 focus:outline-none rounded-full hover:bg-gray-100">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <span id="period-label" class="font-semibold text-gray-800 min-w-[150px] text-center">Novembro / 2023</span>
+                <button id="next-period-btn" class="p-2 text-gray-500 hover:text-blue-600 focus:outline-none rounded-full hover:bg-gray-100">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                </button>
+            </div>
+
+            <!-- Hoje Button -->
+            <button id="today-btn" class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none">
+                Hoje
+            </button>
+        </div>
+
         <!-- Dashboard Cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <!-- Entradas -->
@@ -31,9 +58,10 @@
             </div>
 
             <!-- Saídas -->
-            <div class="bg-white rounded-lg shadow-md p-6 border-t-4 border-red-500">
+            <div class="bg-white rounded-lg shadow-md p-6 border-t-4 border-red-500 flex flex-col">
                 <h2 class="text-lg font-semibold text-gray-600 mb-2">Saídas</h2>
-                <p id="total-expenses" class="text-3xl font-bold text-red-500">R$ 0,00</p>
+                <p id="total-expenses" class="text-3xl font-bold text-red-500 mb-1">R$ 0,00</p>
+                <p id="expense-comparison" class="text-xs text-gray-500 mt-auto">Sem histórico anterior para comparação</p>
             </div>
 
             <!-- Total -->
