@@ -20,6 +20,15 @@ const addCategoryForm = document.getElementById('add-category-form');
 const newCategoryInput = document.getElementById('new-category-input');
 const categoriesListEl = document.getElementById('categories-list');
 
+// Navigation Elements
+const btnNavHome = document.getElementById('btn-nav-home');
+const btnNavAdd = document.getElementById('btn-nav-add');
+const btnNavCharts = document.getElementById('btn-nav-charts');
+const homeScreen = document.getElementById('home-screen');
+const chartsScreen = document.getElementById('charts-screen');
+const mainHeader = document.getElementById('main-header');
+const mainFooter = document.getElementById('main-footer');
+
 // Temporal Filter DOM Elements
 const viewDiarioBtn = document.getElementById('view-diario');
 const viewSemanalBtn = document.getElementById('view-semanal');
@@ -46,6 +55,10 @@ let categories = [];
 // Temporal Filter State
 let currentView = 'mensal'; // 'diario', 'semanal', 'mensal', 'anual'
 let currentDate = new Date(); // Local date
+
+// Chart State
+let chartType = 'expense';
+let chartDate = new Date();
 
 // Date helper to prevent timezone issues
 function parseDateLocal(dateString) {
@@ -179,9 +192,51 @@ function setupTemporalFilterListeners() {
 // Initialize App
 function init() {
     setupTemporalFilterListeners();
+    setupNavigationListeners();
+    setupChartListeners();
     loadTransactions();
     loadCategories();
     updateUI();
+}
+
+// Navigation Listeners
+function setupNavigationListeners() {
+    btnNavHome.addEventListener('click', () => {
+        homeScreen.classList.remove('hidden');
+        mainHeader.classList.remove('hidden');
+        mainFooter.classList.remove('hidden');
+        chartsScreen.classList.add('hidden');
+        document.body.classList.remove('bg-gray-900');
+        document.body.classList.add('bg-gray-100');
+
+        // Update nav icons
+        btnNavHome.classList.replace('text-gray-500', 'text-blue-600');
+        btnNavCharts.classList.replace('text-blue-600', 'text-gray-500');
+    });
+
+    btnNavCharts.addEventListener('click', () => {
+        homeScreen.classList.add('hidden');
+        mainHeader.classList.add('hidden');
+        mainFooter.classList.add('hidden');
+        chartsScreen.classList.remove('hidden');
+        document.body.classList.remove('bg-gray-100');
+        document.body.classList.add('bg-gray-900');
+
+        // Update nav icons
+        btnNavCharts.classList.replace('text-gray-500', 'text-blue-600');
+        btnNavHome.classList.replace('text-blue-600', 'text-gray-500');
+
+        if (typeof updateChartData === 'function') {
+            updateChartData();
+        }
+    });
+
+    btnNavAdd.addEventListener('click', () => {
+        document.getElementById('modal-title').textContent = 'Nova Transação';
+        document.getElementById('submit-btn').textContent = 'Salvar';
+        document.getElementById('transaction-id').value = '';
+        toggleModal(true);
+    });
 }
 
 // LocalStorage Functions
@@ -579,6 +634,240 @@ function updateCategorySelect() {
     });
 }
 
+// Chart Logic
+function setupChartListeners() {
+    const btnExpense = document.getElementById('chart-type-expense');
+    const btnIncome = document.getElementById('chart-type-income');
+    const btnPrev = document.getElementById('chart-prev-btn');
+    const btnNext = document.getElementById('chart-next-btn');
+
+    btnExpense.addEventListener('click', () => {
+        chartType = 'expense';
+        btnExpense.className = 'flex-1 py-2 rounded-md text-sm font-medium bg-gray-700 text-white focus:outline-none transition-colors';
+        btnIncome.className = 'flex-1 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white focus:outline-none transition-colors';
+        updateChartData();
+    });
+
+    btnIncome.addEventListener('click', () => {
+        chartType = 'income';
+        btnIncome.className = 'flex-1 py-2 rounded-md text-sm font-medium bg-gray-700 text-white focus:outline-none transition-colors';
+        btnExpense.className = 'flex-1 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white focus:outline-none transition-colors';
+        updateChartData();
+    });
+
+    btnPrev.addEventListener('click', () => {
+        chartDate = getPreviousPeriodDate(chartDate, 'mensal');
+        updateChartData();
+    });
+
+    btnNext.addEventListener('click', () => {
+        const d = new Date(chartDate);
+        d.setDate(1);
+        d.setMonth(d.getMonth() + 1);
+        chartDate = d;
+        updateChartData();
+    });
+}
+
+function updateChartData() {
+    // Update Period Label
+    const periodLabelEl = document.getElementById('chart-period-label');
+    if(periodLabelEl) {
+        periodLabelEl.textContent = formatPeriodLabel(chartDate, 'mensal');
+    }
+
+    // Filter Transactions
+    const { start, end } = getPeriodBounds(chartDate, 'mensal');
+
+    const filteredTransactions = transactions.filter(t => {
+        const tDate = parseDateLocal(t.date);
+        return tDate >= start && tDate <= end && t.type === chartType;
+    });
+
+    // Group and Calculate
+    const categoryTotals = {};
+    let grandTotal = 0;
+
+    filteredTransactions.forEach(t => {
+        if (!categoryTotals[t.category]) {
+            categoryTotals[t.category] = 0;
+        }
+        categoryTotals[t.category] += t.amount;
+        grandTotal += t.amount;
+    });
+
+    // Sort descending
+    const sortedCategories = Object.keys(categoryTotals)
+        .map(cat => ({ category: cat, amount: categoryTotals[cat] }))
+        .sort((a, b) => b.amount - a.amount);
+
+    if (typeof renderChartUI === 'function') {
+        renderChartUI(sortedCategories, grandTotal);
+    }
+}
+
+let chartInstance = null;
+
+function renderChartUI(groupedData, total) {
+    const emptyState = document.getElementById('chart-empty-state');
+    const containerWrapper = document.getElementById('chart-container-wrapper');
+    const detailsContainer = document.getElementById('chart-details');
+    const centerValue = document.getElementById('chart-center-value');
+    const legendContainer = document.getElementById('chart-legend');
+
+    // Clear dynamic containers
+    legendContainer.innerHTML = '';
+    detailsContainer.innerHTML = '';
+
+    if (groupedData.length === 0) {
+        emptyState.classList.remove('hidden');
+        containerWrapper.classList.add('hidden');
+        if (chartInstance) {
+            chartInstance.destroy();
+            chartInstance = null;
+        }
+        return;
+    }
+
+    emptyState.classList.add('hidden');
+    containerWrapper.classList.remove('hidden');
+
+    // Chart.js Setup
+    const labels = groupedData.map(d => d.category);
+    const data = groupedData.map(d => d.amount);
+
+    // Requested color palette
+    const colors = ['#FBBF24', '#22D3EE', '#BE185D', '#6EE7B7', '#65A30D'];
+
+    if (chartInstance) {
+        chartInstance.destroy();
+    }
+
+    const ctx = document.getElementById('myChart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: colors,
+                borderWidth: 0,
+            }]
+        },
+        options: {
+            cutout: '70%',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false // Hide default legend
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed !== null) {
+                                label += formatCurrency(context.parsed);
+                            }
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Set Center Value
+    centerValue.textContent = formatCurrency(total);
+
+    // Build Legend and Details
+    groupedData.forEach((item, index) => {
+        const color = colors[index % colors.length];
+        const percentage = total > 0 ? ((item.amount / total) * 100).toFixed(2) : 0;
+
+        // --- Legend Item ---
+        const legendItem = document.createElement('div');
+        legendItem.className = 'flex items-center space-x-2';
+
+        const marker = document.createElement('span');
+        marker.className = 'w-3 h-3 rounded-full inline-block';
+        marker.style.backgroundColor = color;
+
+        const textWrapper = document.createElement('span');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'text-gray-300 mr-1 capitalize';
+        nameSpan.textContent = item.category;
+
+        const percSpan = document.createElement('span');
+        percSpan.className = 'font-semibold text-white';
+        percSpan.textContent = `${percentage}%`;
+
+        textWrapper.appendChild(nameSpan);
+        textWrapper.appendChild(percSpan);
+
+        legendItem.appendChild(marker);
+        legendItem.appendChild(textWrapper);
+        legendContainer.appendChild(legendItem);
+
+        // --- Details Item ---
+        const detailItem = document.createElement('div');
+        detailItem.className = 'bg-gray-800 rounded-lg p-4 shadow-sm';
+
+        // Header (Icon/Name & Value)
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'flex justify-between items-center mb-2';
+
+        const nameDiv = document.createElement('div');
+        nameDiv.className = 'flex items-center space-x-3';
+
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'w-8 h-8 rounded-full flex items-center justify-center bg-gray-700 text-white';
+        // Generic icon placeholder
+        iconDiv.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>`;
+
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'font-medium text-white capitalize';
+        titleSpan.textContent = item.category;
+
+        nameDiv.appendChild(iconDiv);
+        nameDiv.appendChild(titleSpan);
+
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'font-bold text-white';
+        valueSpan.textContent = formatCurrency(item.amount);
+
+        headerDiv.appendChild(nameDiv);
+        headerDiv.appendChild(valueSpan);
+
+        // Progress Bar Background
+        const progressBg = document.createElement('div');
+        progressBg.className = 'w-full bg-gray-700 rounded-full h-1.5 mb-1';
+
+        // Progress Fill
+        const progressFill = document.createElement('div');
+        progressFill.className = 'h-1.5 rounded-full';
+        progressFill.style.backgroundColor = color;
+        progressFill.style.width = `${percentage}%`;
+
+        progressBg.appendChild(progressFill);
+
+        // Percentage Text
+        const detailPerc = document.createElement('div');
+        detailPerc.className = 'text-right text-xs text-gray-400 font-medium';
+        detailPerc.textContent = `${percentage}%`;
+
+        detailItem.appendChild(headerDiv);
+        detailItem.appendChild(progressBg);
+        detailItem.appendChild(detailPerc);
+
+        detailsContainer.appendChild(detailItem);
+    });
+}
+
 // Master UI Update
 function updateUI() {
     updateCategorySelect();
@@ -594,6 +883,9 @@ function updateUI() {
 
     updateDashboard(filteredTransactions);
     renderTransactions(filteredTransactions);
+
+    // Also update chart data if it's visible, or simply always keep it in sync
+    updateChartData();
 }
 
 // Start app
